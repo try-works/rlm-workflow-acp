@@ -1,0 +1,7 @@
+.codex/
+.agent/
+.acpxrc.json
+
+**/__pycache__/
+*.pyc
+

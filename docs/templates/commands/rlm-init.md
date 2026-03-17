@@ -1,0 +1,72 @@
+# rlm-init (prompt template)
+
+> This is a copy/paste prompt template. Some agents support custom slash commands; if yours doesn't, paste this prompt into chat.
+
+## Usage Pattern
+
+```
+Initialize RLM run: <run-id> [options]
+```
+
+## Script (Recommended)
+
+If you have the skill installed, you can scaffold a run directly from the project repo root:
+Python is cross-platform; PowerShell commands are equivalent.
+
+```powershell
+# Python (Windows/macOS/Linux):
+python "<SKILL_DIR>/scripts/rlm-init.py" --repo-root . --run-id "<run-id>" --template feature
+python "<SKILL_DIR>/scripts/rlm-init.py" --repo-root . --run-id "<run-id>" --template bugfix --from-issue "#123"
+python3 "<SKILL_DIR>/scripts/rlm-init.py" --repo-root . --run-id "<run-id>" --template feature
+python3 "<SKILL_DIR>/scripts/rlm-init.py" --repo-root . --run-id "<run-id>" --template bugfix --from-issue "#123"
+
+# Windows PowerShell:
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>/scripts/rlm-init.ps1" -RepoRoot . -RunId "<run-id>" -Template feature
+powershell -ExecutionPolicy Bypass -File "<SKILL_DIR>/scripts/rlm-init.ps1" -RepoRoot . -RunId "<run-id>" -Template bugfix -FromIssue "#123"
+
+# PowerShell 7+ (pwsh):
+pwsh -NoProfile -File "<SKILL_DIR>/scripts/rlm-init.ps1" -RepoRoot . -RunId "<run-id>" -Template feature
+pwsh -NoProfile -File "<SKILL_DIR>/scripts/rlm-init.ps1" -RepoRoot . -RunId "<run-id>" -Template bugfix -FromIssue "#123"
+```
+
+## Arguments
+
+- `run-id` - Unique identifier for this run (e.g., "2026-02-21-user-auth")
+- `--template` - Use a specific template (feature|bugfix|refactor)
+- `--from-issue` - Link to GitHub issue number
+
+## Description
+
+Creates a new RLM run folder with scaffolding:
+
+1. Creates `.codex/rlm/<run-id>/` directory
+2. Generates `00-requirements.md` template
+3. Creates `addenda/` and `evidence/` directories (with standard subfolders)
+4. Optionally populates from issue template
+
+## Example
+
+```
+Initialize RLM run: 2026-02-21-add-oauth --template feature
+```
+
+## Output
+
+After running this command:
+- Directory: `.codex/rlm/2026-02-21-add-oauth/`
+- Template: `.codex/rlm/2026-02-21-add-oauth/00-requirements.md`
+- Evidence: `.codex/rlm/2026-02-21-add-oauth/evidence/{screenshots,logs,perf,traces}/`
+
+Next step: Edit the requirements file, then run:
+```
+Implement requirement '2026-02-21-add-oauth'
+```
+
+## Implementation
+
+Use the `rlm-workflow-acp` skill to execute initialization:
+
+1. Resolve run folder path
+2. Create directory structure
+3. Generate requirements template from `references/artifact-template.md`
+4. Report success with next steps
