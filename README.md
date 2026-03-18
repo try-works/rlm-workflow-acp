@@ -155,6 +155,15 @@ Codex creates and seals:
 
 This prevents "false failure" confusion: ACP can succeed while validation fails due to missing/malformed evidence or outcome fields.
 
+#### Note on `02.5-acp-handoff.validation-report.md`
+
+The validation report file may remain on disk even after a successful repair pass. The authoritative source of truth is the state sidecar:
+- `validationStatus`
+- `validationProblems`
+- `validationReport`
+
+If `validationStatus: "success"` and `validationReport: null`, any leftover `02.5-acp-handoff.validation-report.md` should be treated as historical/debugging context, not an active blocker.
+
 The handoff must explicitly declare:
 - `Delegated Phases: 3 | 4 | 3,4`
 - `## Required Artifact Updates` (which artifacts Kimi must update based on delegated phases)
