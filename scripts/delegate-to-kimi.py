@@ -225,9 +225,33 @@ def _load_or_init_state(
     return state
 
 
-def _build_prompt(*, repo_root: Path, run_id: str, handoff_path: Path, handoff_content: str) -> str:
-    # Deterministic prompt: fixed preamble + exact sealed handoff content.
-    return (
+def _build_prompt(
+    *,
+    repo_root: Path,
+    run_id: str,
+    handoff_path: Path,
+    handoff_content: str,
+    validation_report_path: Path | None = None,
+    validation_report_text: str | None = None,
+) -> str:
+    # Deterministic prompt: fixed preamble + exact sealed handoff content (+ optional prior validation report).
+    repair = ""
+    if validation_report_path and validation_report_text:
+        repair = (
+            "Repair pass instructions (prior attempt failed validation):\n"
+            f"- Read `{validation_report_path}` and fix ONLY the listed validation problems.\n"
+            "- Do not redo implementation work unless the report explicitly says code changes are missing.\n"
+            "- Do not touch any tracked files outside the handoff's required worktree changes.\n"
+            "- Prefer fixing artifacts/evidence formatting, regenerating evidence JSON via `rlm_run_command` if needed, "
+            "and updating `04-test-summary.md` to match the evidence sha.\n"
+            "\n"
+            "----- BEGIN VALIDATION REPORT -----\n"
+            f"{validation_report_text.rstrip()}\n"
+            "----- END VALIDATION REPORT -----\n"
+            "\n"
+        )
+
+    preamble = (
         "You are Kimi, acting as the implementation worker for an RLM run.\n"
         "\n"
         "Hard rules:\n"
@@ -272,6 +296,9 @@ def _build_prompt(*, repo_root: Path, run_id: str, handoff_path: Path, handoff_c
         "Out-of-Scope Findings: none|<describe>\n"
         "```\n"
         "\n"
+    )
+
+    tail = (
         f"Repo root (reference only): {repo_root}\n"
         f"Sealed handoff file path: {handoff_path}\n"
         "\n"
@@ -280,6 +307,8 @@ def _build_prompt(*, repo_root: Path, run_id: str, handoff_path: Path, handoff_c
         f"{handoff_content.rstrip()}\n"
         "----- END SEALED HANDOFF -----\n"
     )
+
+    return preamble + repair + tail
 
 
 def _init_handoff_and_state(
@@ -687,7 +716,22 @@ def main() -> int:
         _write_json(state_path, state)
 
         try:
-            prompt_text = _build_prompt(repo_root=repo_root, run_id=run_id, handoff_path=handoff_path, handoff_content=handoff_content)
+            report_path = (run_dir / "02.5-acp-handoff.validation-report.md").resolve()
+            report_text: str | None = None
+            if report_path.exists():
+                try:
+                    report_text = report_path.read_text(encoding="utf-8")
+                except Exception:
+                    report_text = None
+
+            prompt_text = _build_prompt(
+                repo_root=repo_root,
+                run_id=run_id,
+                handoff_path=handoff_path,
+                handoff_content=handoff_content,
+                validation_report_path=report_path if report_text else None,
+                validation_report_text=report_text,
+            )
             result = run_agent_prompt(agent="kimi", cwd=worktree_path, session_name=session_name, prompt_text=prompt_text, approve_all=True)
             if result.returncode != 0:
                 state["acpReturnCode"] = int(result.returncode)
