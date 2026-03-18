@@ -10,7 +10,7 @@ Distributed as Agent Skills; install via Skills CLI (works across supported agen
 
 ```bash
 # Interactive install
-npx skills add doubleuuser/rlm-workflow-acp
+npx skills add try-works/rlm-workflow-acp
 ```
 
 **NOTE:** This repo contains a root skill (`rlm-workflow-acp`) plus additional subskills under `skills/*`.
@@ -20,26 +20,26 @@ To list and install the full set from the repo root, use `--full-depth`.
 
 ```bash
 # List the root skill only
-npx skills add doubleuuser/rlm-workflow-acp --list
+npx skills add try-works/rlm-workflow-acp --list
 
 # List ALL skills in the repo (root + subskills)
-npx skills add doubleuuser/rlm-workflow-acp --list --full-depth
+npx skills add try-works/rlm-workflow-acp --list --full-depth
 ```
 
 #### Install skills
 
 ```bash
 # Install all skills (root + subskills)
-npx skills add doubleuuser/rlm-workflow-acp --skill '*' --full-depth
+npx skills add try-works/rlm-workflow-acp --skill '*' --full-depth
 
 # Global install (available everywhere)
-npx skills add doubleuuser/rlm-workflow-acp --skill '*' --full-depth -g -y
+npx skills add try-works/rlm-workflow-acp --skill '*' --full-depth -g -y
 
 # Install a single subskill
 # Option A (repo path):
-npx skills add doubleuuser/rlm-workflow-acp/skills/rlm-tdd
+npx skills add try-works/rlm-workflow-acp/skills/rlm-tdd
 # Option B (explicit skill selection):
-npx skills add doubleuuser/rlm-workflow-acp --skill rlm-tdd --full-depth
+npx skills add try-works/rlm-workflow-acp --skill rlm-tdd --full-depth
 ```
 
 ### Bootstrap
@@ -187,7 +187,7 @@ Delegation is complete only if all are true:
 ## 3. How to use it
 
 1. Install with:
-   - `npx skills add https://github.com/doubleuuser/rlm-workflow-acp --skill rlm-workflow-acp`
+  - `npx skills add https://github.com/try-works/rlm-workflow-acp --skill rlm-workflow-acp`
 2. Create a run folder and Phase 0 Requirements artifact:
    - Path: `.codex/rlm/<run-id>/00-requirements.md`
    - Example: I create the folder for my first requirements as: /rlm/00-my-first-requirements
