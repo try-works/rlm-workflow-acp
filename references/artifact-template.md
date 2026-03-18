@@ -1183,6 +1183,7 @@ python -c "import hashlib,re,pathlib; p=pathlib.Path('.codex/rlm/<run-id>/02.5-a
 Machine sidecar (operational only):
 - `/.codex/rlm/<run-id>/02.5-acp-handoff.state.json` tracks invocation status/session metadata.
 - This JSON is not canonical implementation content and must not be used as a substitute for RLM artifacts.
+- On validation failure, the wrapper writes `/.codex/rlm/<run-id>/02.5-acp-handoff.validation-report.md` with actionable repair steps (not canonical).
 
 Required sections (fail if missing):
 - `Delegated Phases`

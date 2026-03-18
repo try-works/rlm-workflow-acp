@@ -25,6 +25,7 @@ from lib.acpx_runner import require_acpx_on_path, run_agent_prompt
 from lib.completion_check import verify_acp_completion
 from lib.handoff_lock import compute_handoff_sha256, verify_handoff_hash
 from lib.handoff_parser import read_handoff
+from lib.validation_report import ValidationReportContext, render_validation_report_md
 
 
 def _utc_now_iso() -> str:
@@ -202,6 +203,8 @@ def _load_or_init_state(
         {
             "agent": "kimi",
             "attempt": attempt,
+            "acpReturnCode": state.get("acpReturnCode"),
+            "acpStatus": state.get("acpStatus", "pending"),
             "branch": branch,
             "completedAt": None,
             "handoffFile": str(handoff_path).replace("\\", "/"),
@@ -213,6 +216,9 @@ def _load_or_init_state(
             "status": "pending",
             "transport": "acp",
             "updatedAt": _utc_now_iso(),
+            "validationProblems": state.get("validationProblems"),
+            "validationReport": state.get("validationReport"),
+            "validationStatus": state.get("validationStatus", "pending"),
             "worktreePath": str(worktree_path).replace("\\", "/"),
         }
     )
@@ -246,6 +252,25 @@ def _build_prompt(*, repo_root: Path, run_id: str, handoff_path: Path, handoff_c
         "Required completion signal:\n"
         "- Append a non-empty '## ACP Delegation Outcome' section to every artifact listed under '## Required Artifact Updates' in the sealed handoff.\n"
         "- Include at minimum: Status, Summary (or Changed Areas/Files), Verification Run, Blockers (or 'none').\n"
+        "- Use this exact template (copy/paste, then fill it in with real values):\n"
+        "\n"
+        "```md\n"
+        "## ACP Delegation Outcome\n"
+        "\n"
+        "Status: success|blocked|failed\n"
+        "Summary: <what was done; keep it concrete>\n"
+        "Changed Files:\n"
+        "- <repo-relative path>\n"
+        "\n"
+        "Verification Run:\n"
+        "- Tool: rlm_run_command (MCP argv runner)\n"
+        "- Command: <exact command line or argv list>\n"
+        "- Evidence JSON: `/.codex/rlm/<run-id>/evidence/logs/acp-verification.json`\n"
+        "- Verification Output Sha256: <sha256>\n"
+        "\n"
+        "Blockers: none|<describe>\n"
+        "Out-of-Scope Findings: none|<describe>\n"
+        "```\n"
         "\n"
         f"Repo root (reference only): {repo_root}\n"
         f"Sealed handoff file path: {handoff_path}\n"
@@ -596,6 +621,9 @@ def main() -> int:
 
             if completion.ok:
                 state["status"] = "success"
+                state["validationStatus"] = "success"
+                state["validationProblems"] = None
+                state["validationReport"] = None
                 state["completedAt"] = _utc_now_iso()
                 state["updatedAt"] = _utc_now_iso()
                 state["completionArtifact"] = str(completion.artifact_path).replace("\\", "/") if completion.artifact_path else None
@@ -607,7 +635,24 @@ def main() -> int:
                 return 0
 
             details = "\n".join(f"- {p}" for p in (completion.problems or ["Unknown completion check failure"]))
+            report_path = run_dir / "02.5-acp-handoff.validation-report.md"
+            ctx = ValidationReportContext(
+                run_id=run_id,
+                run_dir=run_dir,
+                handoff_path=handoff_path,
+                worktree_path=worktree_path,
+                delegated_phases=handoff.delegated_phases,
+                required_updates=required_update_paths,
+                evidence_json_path=evidence_json_path,
+                session_name=session_name,
+                acp_returncode=state.get("acpReturnCode"),
+            )
+            report_path.write_text(render_validation_report_md(ctx=ctx, result=completion), encoding="utf-8", newline="\n")
+
             state["status"] = "failed"
+            state["validationStatus"] = "failed"
+            state["validationProblems"] = completion.problems or ["Unknown completion check failure"]
+            state["validationReport"] = str(report_path).replace("\\", "/")
             state["updatedAt"] = _utc_now_iso()
             state["completedAt"] = _utc_now_iso()
             state["lastError"] = f"ACP delegation completion validation failed:\n{details}"
@@ -635,6 +680,8 @@ def main() -> int:
         if not state.get("baselineHead"):
             state["baselineHead"] = _git(["rev-parse", "HEAD"], cwd=worktree_path)
         state["status"] = "running"
+        state["acpStatus"] = "running"
+        state["validationStatus"] = "pending"
         state["updatedAt"] = _utc_now_iso()
         state.pop("lastError", None)
         _write_json(state_path, state)
@@ -643,7 +690,15 @@ def main() -> int:
             prompt_text = _build_prompt(repo_root=repo_root, run_id=run_id, handoff_path=handoff_path, handoff_content=handoff_content)
             result = run_agent_prompt(agent="kimi", cwd=worktree_path, session_name=session_name, prompt_text=prompt_text, approve_all=True)
             if result.returncode != 0:
+                state["acpReturnCode"] = int(result.returncode)
+                state["acpStatus"] = "failed"
+                state["updatedAt"] = _utc_now_iso()
+                _write_json(state_path, state)
                 raise RuntimeError(f"acpx invocation failed (exit {result.returncode})")
+            state["acpReturnCode"] = 0
+            state["acpStatus"] = "success"
+            state["updatedAt"] = _utc_now_iso()
+            _write_json(state_path, state)
         finally:
             cleanup_acpxrc()
 
@@ -661,10 +716,36 @@ def main() -> int:
             verification_evidence_json=evidence_json_path,
         )
         if not completion.ok:
+            report_path = run_dir / "02.5-acp-handoff.validation-report.md"
+            ctx = ValidationReportContext(
+                run_id=run_id,
+                run_dir=run_dir,
+                handoff_path=handoff_path,
+                worktree_path=worktree_path,
+                delegated_phases=handoff.delegated_phases,
+                required_updates=required_update_paths,
+                evidence_json_path=evidence_json_path,
+                session_name=session_name,
+                acp_returncode=state.get("acpReturnCode"),
+            )
+            report_path.write_text(render_validation_report_md(ctx=ctx, result=completion), encoding="utf-8", newline="\n")
+
+            state["status"] = "failed"
+            state["validationStatus"] = "failed"
+            state["validationProblems"] = completion.problems or ["Unknown completion check failure"]
+            state["validationReport"] = str(report_path).replace("\\", "/")
+            state["updatedAt"] = _utc_now_iso()
+            state["completedAt"] = _utc_now_iso()
+            state["lastError"] = "ACP delegation completion validation failed (see validation report)."
+            _write_json(state_path, state)
+
             details = "\n".join(f"- {p}" for p in (completion.problems or ["Unknown completion check failure"]))
             raise RuntimeError(f"ACP delegation completion validation failed:\n{details}")
 
         state["status"] = "success"
+        state["validationStatus"] = "success"
+        state["validationProblems"] = None
+        state["validationReport"] = None
         state["completedAt"] = _utc_now_iso()
         state["updatedAt"] = _utc_now_iso()
         state["completionArtifact"] = str(completion.artifact_path).replace("\\", "/") if completion.artifact_path else None
@@ -691,6 +772,11 @@ def main() -> int:
                     "status": "pending",
                 }
             state["status"] = "failed"
+            # Preserve any more granular status fields if they exist.
+            if "acpStatus" not in state:
+                state["acpStatus"] = "unknown"
+            if "validationStatus" not in state:
+                state["validationStatus"] = "unknown"
             state["updatedAt"] = _utc_now_iso()
             state["completedAt"] = _utc_now_iso()
             state["lastError"] = str(e)

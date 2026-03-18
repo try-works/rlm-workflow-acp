@@ -147,6 +147,13 @@ What Moonshot needs to fix in Kimi Code CLI for full ACP-on-Windows support:
 Codex creates and seals:
 - `/.codex/rlm/<run-id>/02.5-acp-handoff.lock.md` (sealed ACP execution contract after planning, before delegated execution)
 - `/.codex/rlm/<run-id>/02.5-acp-handoff.state.json` (operational sidecar; not canonical)
+- `/.codex/rlm/<run-id>/02.5-acp-handoff.validation-report.md` (generated on validation failure; actionable repair instructions; not canonical)
+
+`02.5-acp-handoff.state.json` records both:
+- `acpStatus` / `acpReturnCode`: whether the ACP invocation itself succeeded
+- `validationStatus`: whether repo-mediated completion validation passed
+
+This prevents "false failure" confusion: ACP can succeed while validation fails due to missing/malformed evidence or outcome fields.
 
 The handoff must explicitly declare:
 - `Delegated Phases: 3 | 4 | 3,4`

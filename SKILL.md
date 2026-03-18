@@ -316,6 +316,7 @@ Before setting `Status: LOCKED`:
   - `02-to-be-plan.md`
   - `02.5-acp-handoff.lock.md` (optional - sealed ACP delegation contract after planning, before delegated execution)
   - `02.5-acp-handoff.state.json` (optional - operational sidecar for delegation runs; not canonical)
+  - `02.5-acp-handoff.validation-report.md` (optional - generated on validation failure; actionable repair instructions; not canonical)
   - `03-implementation-summary.md`
   - `04-test-summary.md`
   - `05-manual-qa.md`
