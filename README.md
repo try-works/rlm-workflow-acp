@@ -4,36 +4,48 @@ A stage-gated Recursive Language Models (RLM) workflow for AI-assisted software 
 
 Distributed as Agent Skills; install via Skills CLI (works across supported agents).
 
+This repository is the source/development repo. The installable root skill now lives at:
+
+- `skills/rlm-workflow-acp/`
+
+Unless explicitly noted otherwise, references below to the "main skill" mean:
+
+- `skills/rlm-workflow-acp/SKILL.md`
+
 ## Installation
 
 ### Skills CLI (Recommended)
 
 ```bash
-# Interactive install
-npx skills add try-works/rlm-workflow-acp
+# Interactive install of the main skill
+npx skills add try-works/rlm-workflow-acp/skills/rlm-workflow-acp
 ```
 
-**NOTE:** This repo contains a root skill (`rlm-workflow-acp`) plus additional subskills under `skills/*`.
-To list and install the full set from the repo root, use `--full-depth`.
+**NOTE:** The repo root is no longer an installable skill folder.
+The installable main skill lives at `skills/rlm-workflow-acp/`, and the repo also contains additional subskills under `skills/*`.
+Use `--full-depth` from the repo root when you want to inspect or install the whole set.
 
 #### List skills
 
 ```bash
-# List the root skill only
-npx skills add try-works/rlm-workflow-acp --list
+# List the main installable skill directly
+npx skills add try-works/rlm-workflow-acp/skills/rlm-workflow-acp --list
 
-# List ALL skills in the repo (root + subskills)
+# List ALL installable skills in the repo
 npx skills add try-works/rlm-workflow-acp --list --full-depth
 ```
 
 #### Install skills
 
 ```bash
-# Install all skills (root + subskills)
+# Install all installable skills from the repo
 npx skills add try-works/rlm-workflow-acp --skill '*' --full-depth
 
 # Global install (available everywhere)
 npx skills add try-works/rlm-workflow-acp --skill '*' --full-depth -g -y
+
+# Install the main skill from its folder
+npx skills add try-works/rlm-workflow-acp/skills/rlm-workflow-acp
 
 # Install a single subskill
 # Option A (repo path):
@@ -139,7 +151,7 @@ Do not use delegation for ambiguous scope, broad architecture work, or tasks req
 - Direct `kimi acp` Shell/Terminal execution via ACP `terminal/create` is treated as unreliable/unsupported on Windows for now.
 
 What Moonshot needs to fix in Kimi Code CLI for full ACP-on-Windows support:
-- In ACP mode, the `Shell` tool is replaced with an ACP terminal-backed tool. Today it calls `terminal/create` with a single combined command string. On Windows this fails because the ACP client tries to spawn an executable literally named like `"py -3 -m unittest ..."`.
+- In ACP mode, the `Shell` tool is replaced with an ACP terminal-backed tool. Today it calls `terminal/create` with a single combined command string. On Windows this fails because the ACP client tries to spawn an executable literally named like `"python -m unittest ..."` instead of an argv-split command.
 - The fix is to pass argv correctly to ACP: call `terminal/create(command=<executable>, args=[...])` (or wrap via `powershell.exe -command <string>` like the non-ACP Shell tool does), and include `cwd` so execution happens in the assigned worktree.
 
 ### Delegation Contract Artifact
@@ -177,13 +189,124 @@ python "<SKILL_DIR>/scripts/delegate-to-kimi.py" --run "<run-id>"
 python "./scripts/delegate-to-kimi.py" --run "<run-id>"
 ```
 
+### Delegation Modes and Session Policy
+
+`delegate-to-kimi.py` now supports explicit delegation modes:
+
+- `implement`
+- `review`
+- `repair`
+
+And explicit session policy:
+
+- `exec`
+- `persistent`
+- `auto`
+
+Recommended defaults:
+
+- bounded implementation: `--mode implement --session-policy auto`
+- review passes: `--mode review --session-policy exec`
+- repair passes: `--mode repair --session-policy exec`
+
+`auto` resolves to one-shot `exec` for `review` and `repair`, and to `exec` for `implement` unless the sealed handoff declares `## Multi-Turn Requirement` as required.
+
+Additional override flags:
+
+- `--slice <name>` selects `02.5-acp-handoff.<name>.lock.md` / `.state.json`
+- `--role-template <implementer|reviewer|repairer|path>` overrides the prompt template source for all ACP sub-attempts in the run, including automatic review/repair follow-up attempts
+- `--owned-write-files <path>` narrows or replaces the owned write set
+- `--allowed-read-paths <path>` narrows or replaces advisory read hints only; this is not machine-enforced today
+- `--output-contract <contract>` proposes a different completion contract
+- `--allow-sealed-override` is required before `--output-contract` may override the sealed handoff in normal runs
+
+Sealed handoff authority:
+
+- the sealed handoff remains authoritative by default
+- if `--output-contract` disagrees with the sealed handoff and `--allow-sealed-override` is not present, the run is rejected
+- if `--allow-sealed-override` is used, the unsafe override is recorded in state/transcript metadata
+
+### Automated Review and Repair Loops
+
+For `implement` mode, the wrapper can run a bounded follow-up loop:
+
+1. implement
+2. validate repo-mediated completion
+3. run review mode
+4. if review returns defects or validation fails, run repair mode
+5. re-validate and re-review until success or the loop budget is exhausted
+
+Use `--max-review-loops <n>` to control the budget. The current default is `2`.
+Both the Python and PowerShell entrypoints forward the exact loop count you set. `0` is a valid explicit value and disables the automatic review/repair loop.
+
+### Transcript Evidence
+
+ACP transcripts are always written for every ACP sub-attempt. The `--save-transcript` flag remains accepted only as a backward-compatible no-op.
+
+Each ACP sub-attempt writes a transcript bundle under:
+
+- `/.codex/rlm/<run-id>/evidence/acp/attempt-XXX/`
+
+The bundle includes:
+
+- `prompt.txt`
+- `stdout.txt`
+- `stderr.txt`
+- `invocation.json`
+
+`invocation.json` records execution details such as:
+
+- `mode`
+- `sessionPolicy`
+- `delegationRole`
+- `roleTemplate`
+- `usedValidationReport`
+- `ownedWriteFiles`
+- `allowedReadPathsAdvisory`
+- `requiredWorktreeChanges`
+- `forcedSessionPolicy`
+
+This always-on transcript policy is intentional: repo-mediated validation and auditability rely on having the ACP prompt/output bundle available after each attempt.
+
+Review-mode output contract:
+
+- `NO_DEFECTS` on a single line is always valid.
+- Otherwise, every top-level bullet or numbered item must be a concrete defect in one of these shapes:
+  - `path/to/file.ts: concrete issue`
+  - `path/to/file.ts:123 concrete issue`
+  - `` `/.codex/rlm/<run-id>/03.5-code-review.md`: concrete issue ``
+- Checklist/TODO bullets like `- verify tests` or `- update docs` are invalid and fail repo-mediated review validation.
+
 ### Functional Smoke Test (ACP Delegation)
 
-This repo includes a manual functional smoke test that sets up a dedicated worktree + fixture + run folder and delegates Phases 3+4 to Kimi:
+This repo includes a manual functional smoke test that sets up a dedicated worktree + fixture + run folder and can exercise multiple ACP scenarios:
 
 ```bash
 python "./scripts/smoke-acp-functional.py"
+python "./scripts/smoke-acp-functional.py" --list-scenarios
+python "./scripts/smoke-acp-functional.py" --scenario implement-persistent
+python "./scripts/smoke-acp-functional.py" --scenario review-exec
+python "./scripts/smoke-acp-functional.py" --scenario ownership-violation
+python "./scripts/smoke-acp-functional.py" --scenario dirty-baseline-validation
+python "./scripts/smoke-acp-functional.py" --scenario multi-slice-disjoint
 ```
+
+Supported scenarios:
+
+- `implement-exec` - one-shot implement mode with review loop enabled
+- `implement-persistent` - persistent-session implement mode
+- `review-exec` - review-only run using `defects_or_no_defects`
+- `ownership-violation` - validation-only scenario proving owned-write enforcement rejects unrelated tracked changes
+- `dirty-baseline-validation` - validation-only scenario proving pre-existing dirty tracked files are ignored unless they change again
+- `multi-slice-disjoint` - validation-only scenario proving both `sp1` and `sp2` validate within their own owned write sets, and that `sp1` rejects cross-slice tracked writes into `sp2`-owned files
+
+Scenario execution model:
+
+- ACP-invoking scenarios: `implement-exec`, `implement-persistent`, `review-exec`
+- Validation-only scenarios: `ownership-violation`, `dirty-baseline-validation`, `multi-slice-disjoint`
+- Positive validation-only scenarios still satisfy the same repo-mediated evidence contract as delegated Phase 4 runs.
+
+For the positive validation-only scenarios, the smoke harness now writes deterministic verification evidence JSON under the run folder so repo-mediated validation matches the same evidence contract used by real delegated Phase 4 runs.
 
 ### Completion Determination (Repo-Mediated)
 
@@ -193,6 +316,8 @@ Delegation is complete only if all are true:
 3. Required artifact updates exist in the run folder.
 4. A non-empty `## ACP Delegation Outcome` section exists in each artifact listed under `## Required Artifact Updates` in the sealed handoff.
 5. If the handoff requires verification evidence (e.g. `Evidence JSON: ...`), the evidence file exists and (for Phase 4) `04-test-summary.md` records `Verification Output Sha256:` matching the evidence `outputSha256`.
+6. Ownership validation is dirty-worktree-safe: pre-existing tracked dirt is ignored unless its file content changes again relative to the captured delegation-start snapshot.
+7. First-run `--validate-only` captures baseline head and dirty tracked snapshots before validation, so it follows the same dirty-worktree-safe ownership rules as normal delegation.
 
 ### Intentionally Out of Scope
 
@@ -516,20 +641,20 @@ Hard gates (`<HG>`) are non-negotiable checkpoints that prevent skipping steps:
 
 Below are common customizations and exactly which file(s) to edit for each.
 
-1. Change trigger phrases or when the skill should activate.
-   - Edit: `SKILL.md` (frontmatter `description`)
+1. Change trigger phrases or when the main skill should activate.
+   - Edit: `skills/rlm-workflow-acp/SKILL.md` (frontmatter `description`)
 
 2. Change phase behavior (for example, require an extra approval pause in Phase 3).
-   - Edit: `SKILL.md` (single-command contract and phase rules)
+   - Edit: `skills/rlm-workflow-acp/SKILL.md` (single-command contract and phase rules)
    - Edit: `references/plans-canonical.md` (full canonical PLANS text that gets upserted on install)
    - Edit: `references/artifact-template.md` (gates/checklists to match the new rule)
 
 3. Change artifact format or required sections.
    - Edit: `references/artifact-template.md` (headers, traceability, gate templates)
-   - Edit: `SKILL.md` (phase execution protocol and expectations)
+   - Edit: `skills/rlm-workflow-acp/SKILL.md` (phase execution protocol and expectations)
 
 4. Change run folder structure or artifact file names.
-   - Edit: `SKILL.md` (run folder and artifact paths)
+   - Edit: `skills/rlm-workflow-acp/SKILL.md` (run folder and artifact paths)
    - Edit: `references/artifact-template.md` (all template paths)
    - Edit: `scripts/install-rlm-workflow.ps1` and `scripts/install-rlm-workflow.py` (scaffold and inserted path references)
 
@@ -539,12 +664,12 @@ Below are common customizations and exactly which file(s) to edit for each.
    - Edit: `scripts/install-rlm-workflow.ps1` and `scripts/install-rlm-workflow.py` only for upsert markers/settings behavior
 
 6. Add or change global artifacts beyond `DECISIONS.md` and `STATE.md`.
-   - Edit: `SKILL.md` (global artifacts + phase expectations)
+   - Edit: `skills/rlm-workflow-acp/SKILL.md` (global artifacts + phase expectations)
    - Edit: `scripts/install-rlm-workflow.ps1` and `scripts/install-rlm-workflow.py` (create/ensure those files)
    - Edit: `references/artifact-template.md` (if new required sections are needed)
 
 7. Change testing policy (TDD depth, Playwright tagging, tier commands).
-   - Edit: `SKILL.md` (mandatory PLANS sections to enforce)
+   - Edit: `skills/rlm-workflow-acp/SKILL.md` (mandatory PLANS sections to enforce)
    - Edit: `skills/rlm-tdd/SKILL.md` (TDD discipline rules)
    - Edit: `references/artifact-template.md` (test summary and plan template sections)
    - Edit in target repo: `.agent/PLANS.md` (canonical testing rules)
@@ -559,7 +684,7 @@ Below are common customizations and exactly which file(s) to edit for each.
    - Edit: `scripts/install-rlm-workflow.py`
    - Edit: `scripts/install-rlm-workflow.sh` (bash wrapper behavior)
    - Edit: `README.md` (installation instructions)
-   - Edit: `SKILL.md` (Install Bootstrap section)
+   - Edit: `skills/rlm-workflow-acp/SKILL.md` (Install Bootstrap section)
    - Note: installer guarantees `.agent/PLANS.md` exists after installation and only upserts managed blocks (never replaces unrelated existing content).
 
 10. Update end-user documentation and examples.

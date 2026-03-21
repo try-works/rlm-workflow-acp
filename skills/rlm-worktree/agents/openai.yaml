@@ -1,0 +1,7 @@
+interface:
+  display_name: "RLM Worktree"
+  short_description: "Set up isolated Phase 0 worktrees, verify safe directory selection, and record a clean baseline before later RLM phases"
+  default_prompt: |
+    Create or enter an isolated worktree for the active RLM run.
+    Verify branch safety, worktree directory safety, setup commands, and baseline test status.
+    Record the result in 00-worktree.md before allowing later phases.

@@ -1,0 +1,7 @@
+interface:
+  display_name: "RLM TDD"
+  short_description: "Enforce strict RED-GREEN-REFACTOR discipline for RLM Phase 3 implementation work"
+  default_prompt: |
+    Apply TDD discipline for RLM implementation work.
+    Require a failing test first, then the minimal green change, then refactor while staying green.
+    Record concrete RED/GREEN/REFACTOR evidence in the Phase 3 artifact.

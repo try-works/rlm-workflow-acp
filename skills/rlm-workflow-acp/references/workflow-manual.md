@@ -344,6 +344,8 @@ Before setting `Status: LOCKED`:
   - `scripts/verify-locks.ps1` - Automated lock hash verification (PowerShell equivalent)
   - `scripts/delegate-to-kimi.py` - ACP delegation wrapper (Codex supervisor -> Kimi worker) via `acpx` (cross-platform)
   - `scripts/delegate-to-kimi.ps1` - PowerShell wrapper for `delegate-to-kimi.py`
+  - `scripts/smoke-acp-functional.py` - manual ACP scenario smoke harness (cross-platform), including owned-write rejection, dirty-baseline validation, and multi-slice isolation proof (`sp1` success, `sp2` success, `sp1` cross-slice rejection)
+  - `scripts/smoke-acp-functional.ps1` - PowerShell wrapper for `smoke-acp-functional.py`
 
 ## Phase Execution Protocol
 
@@ -732,9 +734,94 @@ This repository supports an additive delegation mode where Codex remains the sup
 2. For a bounded implementation and/or testing task, Codex may delegate to a worker agent (for example, Kimi).
 3. Codex creates a **sealed** delegation artifact after planning, before execution: `02.5-acp-handoff.lock.md`.
 4. Codex invokes a thin local wrapper: `scripts/delegate-to-kimi.py` (or `.ps1`).
-5. The wrapper uses `acpx` to invoke `kimi` in a persistent, named session with `--cwd` set to the assigned worktree.
+5. The wrapper uses `acpx` with explicit `implement`, `review`, or `repair` mode and `exec`/`persistent`/`auto` session policy.
 6. Kimi performs the work in the assigned worktree, writes code directly, and updates the run artifacts directly.
 7. Codex resumes by re-reading repo/worktree/artifact state and continues supervision.
+
+### Delegation Modes and Session Policy
+
+Supported modes:
+
+- `implement`
+- `review`
+- `repair`
+
+Supported session policies:
+
+- `exec`
+- `persistent`
+- `auto`
+
+Recommended defaults:
+
+- bounded implementation: `implement` + `auto`
+- review: `review` + `exec`
+- repair: `repair` + `exec`
+
+`auto` resolves to one-shot `exec` unless the sealed handoff explicitly marks multi-turn work as required.
+
+Useful overrides:
+
+- `--slice <name>` for `02.5-acp-handoff.<name>.lock.md`
+- `--role-template <implementer|reviewer|repairer|path>` for all ACP sub-attempts in the run, including automatic review/repair follow-up attempts
+- `--owned-write-files <path>`
+- `--allowed-read-paths <path>` advisory only; this is prompt/state metadata, not machine-enforced validation
+- `--output-contract <contract>`
+- `--allow-sealed-override` for explicit unsafe mismatch from the sealed handoff
+
+Sealed handoff rule:
+
+- the sealed handoff remains authoritative by default
+- if `--output-contract` differs from the sealed handoff, the wrapper rejects the run unless `--allow-sealed-override` is explicitly set
+- unsafe overrides are recorded in state/transcript metadata
+
+### Automated Review / Repair Loop
+
+When `implement` mode is used, the wrapper may automatically run:
+
+1. implement
+2. validate completion
+3. review
+4. repair if validation or review reports defects
+5. re-validate and re-review until success or loop budget exhausted
+
+Control the budget with `--max-review-loops`. The current default is `2`.
+Both the Python and PowerShell entrypoints forward the exact loop count you set. `0` is a valid explicit value and disables the automatic review/repair loop.
+
+### Validate-Only Baseline Behavior
+
+`--validate-only` now initializes baseline head and dirty tracked snapshots on first use if the sidecar does not already contain them. This keeps first-run validation behavior consistent with the normal delegation path on dirty worktrees.
+
+### ACP Evidence
+
+ACP transcripts are always written for every ACP sub-attempt. Treat `--save-transcript` as a backward-compatible no-op, not as an opt-in switch.
+
+Each ACP sub-attempt writes a transcript bundle under:
+
+- `/.codex/rlm/<run-id>/evidence/acp/attempt-XXX/`
+
+The evidence bundle includes:
+
+- `prompt.txt`
+- `stdout.txt`
+- `stderr.txt`
+- `invocation.json`
+
+`invocation.json` records mode, session policy, delegation role, role template, validation-report linkage, owned write metadata, transcript policy, and whether allowed read paths are advisory.
+
+### Review Output Contract
+
+For `defects_or_no_defects`, the reviewer must return either:
+
+- `NO_DEFECTS`
+- a flat top-level defect list where every item begins with a concrete file or artifact reference plus a concrete issue
+
+Examples:
+
+- `pm-auth/model.ts:128 request-time DDL fallback still runs on validate-only`
+- `` `/.codex/rlm/<run-id>/03.5-code-review.md`: missing explicit reviewer verdict ``
+
+Checklist/TODO bullets like `- verify tests` or `- update docs` are invalid and must fail review-contract validation.
 
 ### ACP Boundary (Control Only)
 

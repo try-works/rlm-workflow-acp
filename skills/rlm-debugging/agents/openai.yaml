@@ -1,0 +1,7 @@
+interface:
+  display_name: "RLM Debugging"
+  short_description: "Run systematic root cause analysis for RLM bug-fix and failing-test requirements before planning fixes"
+  default_prompt: |
+    Perform systematic debugging for the active RLM run.
+    Reproduce the issue, trace data flow, test hypotheses, and document the root cause before proposing fixes.
+    Use Phase 1.5 as the formal output surface.

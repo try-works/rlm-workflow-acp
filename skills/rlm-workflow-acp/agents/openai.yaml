@@ -1,0 +1,7 @@
+interface:
+  display_name: "RLM Workflow ACP"
+  short_description: "Run repository-document RLM phases with strict sequential gates and optional ACP delegation to Kimi via acpx"
+  default_prompt: |
+    Execute the RLM workflow from repository artifacts, not from chat memory.
+    Enforce phase order, lock validation, TODO completion, and worktree safety.
+    Use ACP delegation only for bounded tasks that can be validated from repo state.

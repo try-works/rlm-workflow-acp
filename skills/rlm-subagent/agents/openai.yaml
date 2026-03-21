@@ -1,0 +1,7 @@
+interface:
+  display_name: "RLM Subagent"
+  short_description: "Coordinate parallel sub-phase execution and review loops with sequential fallback for RLM implementation and testing"
+  default_prompt: |
+    Use subagents only for bounded independent sub-phases or review tasks.
+    Preserve plan alignment, TDD discipline, and explicit review results.
+    Fall back to sequential execution when parallelization is not justified or not available.
